@@ -654,6 +654,7 @@ AC_ARG_ENABLE(kdrive,         AS_HELP_STRING([--enable-kdrive], [Build kdrive se
 AC_ARG_ENABLE(xephyr,         AS_HELP_STRING([--enable-xephyr], [Build the kdrive Xephyr server (default: auto)]), [XEPHYR=$enableval], [XEPHYR=auto])
 AC_ARG_ENABLE(xfake,          AS_HELP_STRING([--enable-xfake], [Build the kdrive 'fake' server (default: auto)]), [XFAKE=$enableval], [XFAKE=auto])
 AC_ARG_ENABLE(xfbdev,         AS_HELP_STRING([--enable-xfbdev], [Build the kdrive framebuffer device server (default: auto)]), [XFBDEV=$enableval], [XFBDEV=auto])
+AC_ARG_ENABLE(xepson,         AS_HELP_STRING([--enable-xepson], [Build the kdrive Epson 13806 framebuffer server (default: disabled)]), [XEPSON=$enableval], [XEPSON=no])
 dnl kdrive options
 AC_ARG_ENABLE(kdrive-kbd,     AS_HELP_STRING([--enable-kdrive-kbd], [Build kbd driver for kdrive (default: auto)]), [KDRIVE_KBD=$enableval], [KDRIVE_KBD=auto])
 AC_ARG_ENABLE(kdrive-mouse,   AC_HELP_STRING([--enable-kdrive-mouse], [Build mouse driver for kdrive (default: auto)]), [KDRIVE_MOUSE=$enableval], [KDRIVE_MOUSE=auto])
@@ -1997,6 +1998,11 @@ if test "$KDRIVE" = yes; then
         AC_DEFINE(KDRIVEFBDEV, 1, [Build fbdev-based kdrive server])
     fi
 
+    if test "x$XEPSON" = xyes && test "x$KDRIVEFBDEVLIB" = xyes; then
+	KDRIVEEPSONLIB=yes
+	AC_DEFINE(KDRIVEEPSON, 1, [Build kdrive server for Epson 13806 chip])
+    fi
+
 
     PKG_CHECK_MODULES([TSLIB], [tslib-0.0], [HAVE_TSLIB="yes"], [HAVE_TSLIB="no"])
     if test "x$HAVE_TSLIB" = xno; then
@@ -2103,8 +2109,11 @@ AM_CONDITIONAL(KDRIVE_KBD,   [test "x$KDRIVE_KBD" = xyes])
 AM_CONDITIONAL(KDRIVE_MOUSE, [test "x$KDRIVE_MOUSE" = xyes])
 AM_CONDITIONAL(TSLIB, [test "x$HAVE_TSLIB" = xyes])
 AM_CONDITIONAL(KDRIVEFBDEV, [test "x$XFBDEV" = xyes])
+AM_CONDITIONAL(KDRIVEEPSON, [test "x$XEPSON" = xyes])
 AM_CONDITIONAL(XEPHYR, [test "x$KDRIVE" = xyes && test "x$XEPHYR" = xyes])
+AM_CONDITIONAL(XEPSON, [test "x$KDRIVE" = xyes && test "x$XEPSON" = xyes])
 AM_CONDITIONAL(BUILD_KDRIVEFBDEVLIB, [test "x$KDRIVE" = xyes && test "x$KDRIVEFBDEVLIB" = xyes])
+AM_CONDITIONAL(BUILD_KDRIVEEPSONLIB, [test "x$KDRIVE" = xyes && test "x$KDRIVEEPSONLIB" = xyes])
 AM_CONDITIONAL(XFAKESERVER, [test "x$KDRIVE" = xyes && test "x$XFAKE" = xyes])
 
 dnl and the rest of these are generic, so they're in config.h
@@ -2232,6 +2241,7 @@ hw/xquartz/xpr/Makefile
 hw/kdrive/Makefile
 hw/kdrive/ephyr/Makefile
 hw/kdrive/ephyr/man/Makefile
+hw/kdrive/epson/Makefile
 hw/kdrive/fake/Makefile
 hw/kdrive/fbdev/Makefile
 hw/kdrive/linux/Makefile

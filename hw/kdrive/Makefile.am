@@ -10,6 +10,10 @@ if XEPHYR
 XEPHYR_SUBDIRS = ephyr
 endif
 
+if XEPSON
+XEPSON_SUBDIRS = epson
+endif
+
 if KDRIVELINUX
 LINUX_SUBDIRS = linux
 endif
@@ -17,6 +21,7 @@ endif
 SERVER_SUBDIRS = 		\
 	$(FBDEV_SUBDIRS)	\
 	$(XEPHYR_SUBDIRS)       \
+	$(XEPSON_SUBDIRS)	\
 	$(XFAKE_SUBDIRS)
 
 SUBDIRS =			\
@@ -24,7 +29,7 @@ SUBDIRS =			\
 	$(LINUX_SUBDIRS)	\
 	$(SERVER_SUBDIRS)
 
-DIST_SUBDIRS = fbdev ephyr src linux fake
+DIST_SUBDIRS = fbdev ephyr epson src linux fake
 
 relink:
 	$(AM_V_at)for i in $(SERVER_SUBDIRS) ; do $(MAKE) -C $$i relink || exit 1 ; done
