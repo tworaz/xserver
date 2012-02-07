@@ -20,8 +20,8 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 /*
- * epson13806draw.h - Implementation of hard ware accelerated functions for epson S1D13806
- *               Graphic controller.
+ * epson13806draw.h - Implementation of hard ware accelerated functions for
+ *                    Epson S1D13806 Graphic controller.
  *
  * History:
  * 28-Jan-04  C.Stylianou       PRJ NBL: Created from chipsdraw.h
@@ -77,8 +77,8 @@ typedef struct _epsonScreenInfo {
     CARD8	    *screen;
     CARD8	    *off_screen;
     int		    off_screen_size;
-    EpsonCursor   cursor;
-    void       *regbase_virt;
+    EpsonCursor     cursor;
+    void            *regbase_virt;
 } EpsonScreenInfo;
 
 #define getEpsonScreenInfo(kd) ((EpsonScreenInfo *) ((kd)->screen->driver))
@@ -116,7 +116,5 @@ epsonRecolorCursor (ScreenPtr pScreen, int ndef, xColorItem *pdef);
 
 void
 exaDDXDriverInit(ScreenPtr pScreen);
-
-extern KdCardFuncs  epsonFuncs;
 
 #endif

@@ -67,10 +67,10 @@ CARD8 epson13806Rop[16] = {
 
 
 
-#undef __DEBUG_EPSON__
-#undef __DEBUG_EPSON_FBSET__
-#undef __DEBUG_EPSON_SOLID__
-#undef __DEBUG_EPSON_COPY__
+#define __DEBUG_EPSON__
+#define __DEBUG_EPSON_FBSET__
+#define __DEBUG_EPSON_SOLID__
+#define __DEBUG_EPSON_COPY__
 
 
 #ifdef __DEBUG_EPSON__
@@ -460,9 +460,12 @@ epsonDoneCopy (PixmapPtr pDst)
 Bool
 epsonDrawInit (ScreenPtr pScreen)
 {
-    KdScreenPriv(pScreen);
+    //KdScreenPriv(pScreen);
+    KdPrivScreenPtr pScreenPriv = ((KdPrivScreenPtr) dixLookupPrivate(&(pScreen->devPrivates), kdScreenPrivateKey));
+
     KdScreenInfo *screen = pScreenPriv->screen;
     EpsonScrPriv *epsons = screen->driver;
+    EpsonPriv    *priv = screen->card->driver;
     static int addr = 0x00000000;
 
     EPSON_DEBUG (fprintf(stderr,"+epsonDrawInit\n"));
@@ -507,7 +510,6 @@ epsonDrawInit (ScreenPtr pScreen)
     EPSON13806_REG(EPSON13806_LCDFIFOLOW) = 0x00;
 #endif
 
-
     EPSON13806_REG(EPSON13806_BLTCTRL0) = 0x00;
     EPSON13806_REG(EPSON13806_BLTCTRL1) = 0x01;     // We're using 16 bpp
     EPSON13806_REG16(EPSON13806_BLTSTRIDE) = byteStride>>1; // program BLIT memory offset
@@ -544,20 +546,28 @@ epsonDrawInit (ScreenPtr pScreen)
 #endif
 
     memset(&epsons->exa, 0, sizeof(ExaDriverRec));
+
+    epsons->exa.memoryBase = (CARD8 *) (priv->fb);
+    epsons->exa.offScreenBase = screen->fb.byteStride * screen->height;
+    epsons->exa.memorySize = EPSON13806_VMEM_SIZE;
+
     epsons->exa.exa_major = 2;
     epsons->exa.exa_minor = 0;
 
-    epsons->exa.PrepareSolid	= epsonPrepareSolid;
-    epsons->exa.Solid		= epsonSolid;
-    epsons->exa.DoneSolid	= epsonDoneSolid;
+    epsons->exa.PrepareSolid = epsonPrepareSolid;
+    epsons->exa.Solid		 = epsonSolid;
+    epsons->exa.DoneSolid	 = epsonDoneSolid;
 
-    epsons->exa.PrepareCopy	= epsonPrepareCopy;
-    epsons->exa.Copy		= epsonCopy;
-    epsons->exa.DoneCopy	= epsonDoneCopy;
+    epsons->exa.PrepareCopy	 = epsonPrepareCopy;
+    epsons->exa.Copy		 = epsonCopy;
+    epsons->exa.DoneCopy	 = epsonDoneCopy;
 
-    epsons->exa.WaitMarker	= epsonWaitMarker;
+    epsons->exa.WaitMarker	 = epsonWaitMarker;
 
-    epsons->exa.flags		= EXA_OFFSCREEN_PIXMAPS;
+    epsons->exa.flags		 = EXA_OFFSCREEN_PIXMAPS;
+
+    epsons->exa.maxX         = screen->width - 1;
+    epsons->exa.maxY         = screen->height - 1;
 
     if (!exaDriverInit (pScreen, &epsons->exa)) {
         ErrorF("Failed to initialize EXA\n");
