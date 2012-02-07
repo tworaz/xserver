@@ -20,8 +20,8 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 /*
- * epson13806draw.c - Implementation of hardware accelerated functions for epson S1D13806
- *               Graphic controller.
+ * epson13806draw.c - Implementation of hardware accelerated functions for
+ *                    Epson S1D13806 Graphic controller.
  *
  * History:
  * 28-Jan-04  C.Stylianou       PRJ NBL: Created from chipsdraw.c
@@ -229,7 +229,7 @@ epsonPrepareSolid (PixmapPtr pPixmap,
     if ((pm & depthMask) != depthMask)
         return FALSE;
 
-	epsonSet (pPixmap->drawable.pScreen);
+    epsonSet (pPixmap->drawable.pScreen);
     fg &= 0xffff;
     epsonFg (fg);
     epsonBg (fg);
@@ -306,10 +306,12 @@ epsonSolid (PixmapPtr pPix, int x1, int y1, int x2, int y2)
 static void
 epsonDoneSolid (PixmapPtr pPix)
 {
+    ScreenPtr pScreen = pPix->drawable.pScreen;
     EPSON_DEBUG_SOLID (fprintf(stderr,"+epsonDoneSolid\n"));
 
     // Read from BitBLT data offset 0 to shut it down
     //(void)EPSON13806_REG(EPSON13806_BITBLTDATA);
+    exaMarkSync(pScreen);
 
     EPSON_DEBUG_SOLID (fprintf(stderr,"-epsonDoneSolid\n"));
 }
@@ -438,10 +440,12 @@ epsonCopy (PixmapPtr pDst,
 static void
 epsonDoneCopy (PixmapPtr pDst)
 {
+    ScreenPtr pScreen = pDst->drawable.pScreen;
     EPSON_DEBUG_COPY (fprintf(stderr,"+epsonDoneCopy\n"));
 
     // Read from BitBLT data offset 0 to shut it down
     //(void)EPSON13806_REG(EPSON13806_BITBLTDATA);
+    exaMarkSync(pScreen);
 
     EPSON_DEBUG_COPY (fprintf(stderr,"-epsonDoneCopy\n"));
 }
@@ -547,27 +551,30 @@ epsonDrawInit (ScreenPtr pScreen)
 
     memset(&epsons->exa, 0, sizeof(ExaDriverRec));
 
-    epsons->exa.memoryBase = (CARD8 *) (priv->fb);
-    epsons->exa.offScreenBase = screen->fb.byteStride * screen->height;
-    epsons->exa.memorySize = EPSON13806_VMEM_SIZE;
-
     epsons->exa.exa_major = 2;
     epsons->exa.exa_minor = 0;
 
+    epsons->exa.memoryBase    = (CARD8 *) (priv->fb);
+    epsons->exa.offScreenBase = screen->fb.byteStride * screen->height;
+    epsons->exa.memorySize    = EPSON13806_VMEM_SIZE;
+
     epsons->exa.PrepareSolid = epsonPrepareSolid;
-    epsons->exa.Solid		 = epsonSolid;
-    epsons->exa.DoneSolid	 = epsonDoneSolid;
+    epsons->exa.Solid        = epsonSolid;
+    epsons->exa.DoneSolid    = epsonDoneSolid;
 
-    epsons->exa.PrepareCopy	 = epsonPrepareCopy;
-    epsons->exa.Copy		 = epsonCopy;
-    epsons->exa.DoneCopy	 = epsonDoneCopy;
+    epsons->exa.PrepareCopy  = epsonPrepareCopy;
+    epsons->exa.Copy         = epsonCopy;
+    epsons->exa.DoneCopy     = epsonDoneCopy;
 
-    epsons->exa.WaitMarker	 = epsonWaitMarker;
-
-    epsons->exa.flags		 = EXA_OFFSCREEN_PIXMAPS;
+    epsons->exa.WaitMarker   = epsonWaitMarker;
 
     epsons->exa.maxX         = screen->width - 1;
     epsons->exa.maxY         = screen->height - 1;
+
+    epsons->exa.pixmapOffsetAlign = 2;
+    epsons->exa.pixmapPitchAlign  = 2;
+
+    epsons->exa.flags        = EXA_OFFSCREEN_PIXMAPS;
 
     if (!exaDriverInit (pScreen, &epsons->exa)) {
         ErrorF("Failed to initialize EXA\n");

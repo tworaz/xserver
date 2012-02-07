@@ -52,16 +52,10 @@ KdCardFuncs epsonFuncs = {
     0,                      /* finiCursor */
     0,                      /* recolorCursor */
 
-#if 0
     epsonDrawInit,          /* initAccel */
     epsonDrawEnable,        /* enableAccel */
     epsonDrawDisable,       /* disableAccel */
     epsonDrawFini,          /* finiAccel */
-#endif
-    0,
-    0,
-    0,
-    0,
 
     epsonGetColors,         /* getColors */
     epsonPutColors,         /* putColors */
