@@ -54,10 +54,19 @@ typedef struct _epsonPriv {
     char			*fb_base;
 } EpsonPriv;
 
+typedef struct _epsonExaPriv {
+    ExaDriverRec	exa;
+	unsigned int	bpp;
+	unsigned int	stride;
+	PixmapPtr		pSrc;
+	PixmapPtr		pDst;
+    int         	negative_dir;
+} EpsonExaPriv;
+
 typedef struct _epsonScrPriv {
     Rotation		randr;
-    Bool		shadow;
-    ExaDriverRec	exa;
+    Bool			shadow;
+    EpsonExaPriv	*exaPriv;
 } EpsonScrPriv;
 
 extern char*        fbdevDevicePath;

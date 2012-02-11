@@ -71,15 +71,21 @@ epsonInitialize (KdCardInfo *card, EpsonPriv *priv)
         return FALSE;
     }
 
-    priv->fb_base = epsonMapDevice (EPSON13806_PHYSICAL_VMEM_ADDR, EPSON13806_VMEM_SIZE);
-    if (priv->fb_base == (char *)-1) {
-        perror("ERROR: failed to mmap framebuffer!");
-        close (priv->fd);
-        return FALSE;
-    }
+    priv->fb_base = (char *) mmap ((caddr_t) NULL,
+                                   priv->fix.smem_len,
+                                   PROT_READ|PROT_WRITE,
+                                   MAP_SHARED,
+                                   priv->fd, 0);
 
+    if (priv->fb_base == (char *)-1)
+    {
+		perror("ERROR: mmap framebuffer fails!");
+		close (priv->fd);
+		return FALSE;
+    }
     off = (unsigned long) priv->fix.smem_start % (unsigned long) getpagesize();
     priv->fb = priv->fb_base + off;
+
     return TRUE;
 }
 
@@ -389,6 +395,8 @@ epsonRandRSetConfig (ScreenPtr       pScreen,
     int             oldheight;
     int             oldmmwidth;
     int             oldmmheight;
+
+#if 0
     int             newwidth, newheight;
 
     if (screen->randr & (RR_Rotate_0|RR_Rotate_180))
@@ -401,6 +409,7 @@ epsonRandRSetConfig (ScreenPtr       pScreen,
         newwidth = pSize->height;
         newheight = pSize->width;
     }
+#endif
 
     if (wasEnabled)
         KdDisableScreen (pScreen);

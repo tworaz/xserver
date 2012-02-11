@@ -30,7 +30,7 @@
 #ifdef HAVE_CONFIG_H
 #include <kdrive-config.h>
 #endif
-#include <epson13806.h>
+#include "epson13806.h"
 
 KdCardFuncs epsonFuncs = {
     epsonCardInit,          /* cardinit */
@@ -64,7 +64,7 @@ KdCardFuncs epsonFuncs = {
 void
 InitCard (char *name)
 {
-    fprintf(stderr, "Epson 13806 Tiny X Driver ver 1.10\n");
+    fprintf(stdout, "Epson 13806 Tiny X Driver ver 1.10\n");
 
     KdCardInfoAdd (&epsonFuncs, 0);
 }
