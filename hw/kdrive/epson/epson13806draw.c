@@ -34,16 +34,16 @@
 #include    "epson13806.h"
 #include    "epson13806reg.h"
 
-#define __DEBUG_EPSON__
+//#define __DEBUG_EPSON__
 
 #ifdef __DEBUG_EPSON__
     #define EPSON_DEBUG(...) fprintf(stderr, __VA_ARGS__)
 #else
-    #define EPSON_DEBUG(...)
+    #define EPSON_DEBUG(...) do { } while (0)
 #endif
 
 #define EpsonExaPriv(pPix) \
-    ScreenPtr pScreen = pDst->drawable.pScreen; \
+    ScreenPtr pScreen = pPix->drawable.pScreen; \
     KdScreenPriv(pScreen); \
     KdScreenInfo *screen = pScreenPriv->screen; \
     EpsonScrPriv *scrpriv = screen->driver; \
@@ -74,7 +74,7 @@ static unsigned char *regbase;
 static inline void
 epsonBg (Pixel bg)
 {
-	EPSON13806_REG16(EPSON13806_BLTBGCOLOR) = bg;
+    EPSON13806_REG16(EPSON13806_BLTBGCOLOR) = bg;
 }
 
 static inline void
@@ -92,39 +92,36 @@ epsonWaitForHwBltDone (void)
 static void
 epsonWaitMarker (ScreenPtr pScreen, int marker)
 {
-    EPSON_DEBUG ("+%s\n", __func__);
+    EPSON_DEBUG ("%s\n", __func__);
 
     epsonWaitForHwBltDone ();
-
-    EPSON_DEBUG ("-%s\n", __func__);
 }
 
 static Bool
-epsonPrepareSolid (PixmapPtr pPixmap,
+epsonPrepareSolid (PixmapPtr pPix,
                    int       alu,
                    Pixel     pm,
                    Pixel     fg)
 {
-#if 0
-    FbBits  depthMask;
+    EpsonExaPriv (pPix);
 
-    EPSON_DEBUG_SOLID (fprintf(stderr,"+epsonPrepareSolid\n"));
+    EPSON_DEBUG ("%s, alu [0x%x] bpp [%d]\n", __func__, alu,
+                 pPix->drawable.bitsPerPixel);
 
-    depthMask = FbFullMask(pPixmap->drawable.depth);
-    if ((pm & depthMask) != depthMask)
+    if (pPix->drawable.bitsPerPixel != (exaPriv->bytesPerPixel << 3))
         return FALSE;
 
-    epsonSet (pPixmap->drawable.pScreen);
+    if (!EXA_PM_IS_SOLID (&(pPix->drawable), pm))
+        return FALSE;
+
     fg &= 0xffff;
     epsonFg (fg);
     epsonBg (fg);
 
     epsonWaitForHwBltDone ();
 
-    EPSON_DEBUG_SOLID (fprintf(stderr,"Solid.alu [0x%x], [%d]\n", alu ,epson13806Rop[alu]));
     EPSON13806_REG(EPSON13806_BLTROP) = epson13806Rop[alu];
 
-    //if (epson13806Rop[alu] == GXnoop)
     if (alu == GXnoop)
     {
         EPSON13806_REG(EPSON13806_BLTOPERATION) = EPSON13806_BLTOPERATION_PATFILLROP;
@@ -134,25 +131,32 @@ epsonPrepareSolid (PixmapPtr pPixmap,
         EPSON13806_REG(EPSON13806_BLTOPERATION) = EPSON13806_BLTOPERATION_SOLIDFILL;
     }
 
-    EPSON_DEBUG_SOLID (fprintf(stderr,"-epsonPrepareSolid\n"));
     return TRUE;
-#endif
-    return FALSE;
 }
 
 static void
 epsonSolid (PixmapPtr pPix, int x1, int y1, int x2, int y2)
 {
-#if 0
+    int pitch = exaGetPixmapPitch (pPix);
     CARD32  dst_addr;
     int width, height;
 
-    EPSON_DEBUG_SOLID (fprintf(stderr,"+epsonSolid\n"));
-    EPSON_DEBUG_SOLID (fprintf(stderr,"Solid X1 [%d] Y1 [%d] X2 [%d] Y2 [%d]\n", x1, y1, x2, y2));
+    EpsonExaPriv (pPix);
 
-    dst_addr = y1 * byteStride + x1 * bytesPerPixel;
-    width = ((x2 - x1)-1);
-    height = ((y2 - y1)-1);
+    EPSON_DEBUG ("%s Solid X1 [%d] Y1 [%d] X2 [%d] Y2 [%d]\n",
+                 __func__, x1, y1, x2, y2);
+
+    dst_addr = exaGetPixmapOffset (pPix);
+    dst_addr += (y1 * pitch) + (x1 * exaPriv->bytesPerPixel);
+
+    width = ((x2 - x1) - 1);
+    height = ((y2 - y1) - 1);
+
+    // Destination is linear
+    EPSON13806_REG (EPSON13806_BLTCTRL0) &= 0x2;
+
+    // program BLIT memory offset
+    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = pitch / exaPriv->bytesPerPixel;
 
     // program dst address
     EPSON13806_REG16(EPSON13806_BLTDSTSTART01) = dst_addr;
@@ -165,10 +169,7 @@ epsonSolid (PixmapPtr pPix, int x1, int y1, int x2, int y2)
     EPSON13806_REG(EPSON13806_BLTCTRL0) = EPSON13806_BLTCTRL0_ACTIVE;
 
     // Wait for operation to complete
-    while (EPSON13806_REG(EPSON13806_BLTCTRL0) & EPSON13806_BLTCTRL0_ACTIVE) {}
-
-    EPSON_DEBUG_SOLID (fprintf(stderr,"-epsonSolid\n"));
-#endif
+    epsonWaitForHwBltDone ();
 }
 
 static void
@@ -176,27 +177,35 @@ epsonDoneSolid (PixmapPtr pPix)
 {
     ScreenPtr pScreen = pPix->drawable.pScreen;
 
-    EPSON_DEBUG ("+%s\n", __func__);
+    EPSON_DEBUG ("%s\n", __func__);
 
     // Read from BitBLT data offset 0 to shut it down
-    //(void)EPSON13806_REG(EPSON13806_BITBLTDATA);
-    exaMarkSync(pScreen);
+    (void)EPSON13806_REG (EPSON13806_BITBLTDATA);
 
-    EPSON_DEBUG ("-%s\n", __func__);
+    exaMarkSync(pScreen);
 }
 
 static Bool
-epsonPrepareCopy (PixmapPtr	pSrc,
-                  PixmapPtr	pDst,
+epsonPrepareCopy (PixmapPtr pSrc,
+                  PixmapPtr pDst,
                   int       xdir,
                   int       ydir,
                   int       alu,
                   Pixel     pm)
 {
-	unsigned int bitsPerPixel;
     EpsonExaPriv (pDst);
+    unsigned int bitsPerPixel = exaPriv->bytesPerPixel << 3;
 
-	bitsPerPixel = exaPriv->bpp << 3;
+    // We're using EXA_TWO_BITBLT_DIRECTIONS xdir should always equal ydir
+    assert (xdir == ydir);
+
+    EPSON_DEBUG ("%s, neg_dir [%d] alu [0x%x]\n", __func__, (xdir < 0), alu);
+    EPSON_DEBUG ("%s, src_off [0x%.6x] src_pitch [%d] src_bpp [%d]\n", __func__,
+                 (unsigned int)exaGetPixmapOffset(pSrc), (int)exaGetPixmapPitch (pSrc),
+                 pSrc->drawable.bitsPerPixel);
+    EPSON_DEBUG ("%s, dst_off [0x%.6x] dst_pitch [%d] dst_bpp [%d]\n", __func__,
+                 (unsigned int)exaGetPixmapOffset(pDst), (int)exaGetPixmapPitch (pDst),
+                 pDst->drawable.bitsPerPixel);
 
     if (pSrc->drawable.bitsPerPixel != bitsPerPixel ||
         pDst->drawable.bitsPerPixel != bitsPerPixel)
@@ -205,28 +214,16 @@ epsonPrepareCopy (PixmapPtr	pSrc,
     if (!EXA_PM_IS_SOLID (&(pDst->drawable), pm))
         return FALSE;
 
-	if (exaGetPixmapPitch (pSrc) != exaGetPixmapPitch (pDst))
-		return FALSE;
-
-    if (xdir < 0 && ydir < 0) {
-        exaPriv->negative_dir = 1;
-    } else if (xdir > 0 && ydir > 0) {
-        exaPriv->negative_dir = 0;
-    } else {
-        EPSON_DEBUG ("-%s, unsupported copy direction\n", __func__);
+    if (exaGetPixmapPitch (pSrc) != exaGetPixmapPitch (pDst))
         return FALSE;
-    }
 
-    EPSON_DEBUG ("+%s xdir [%d] ydir [%d] alu [0x%x]\n",
-                 __func__, xdir, ydir, alu);
-
+    exaPriv->negative_dir = (xdir < 0);
     exaPriv->pSrc = pSrc;
     exaPriv->pDst = pDst;
 
     epsonWaitForHwBltDone ();
+	exaMarkSync(pDst->drawable.pScreen);
     EPSON13806_REG(EPSON13806_BLTROP) = epson13806Rop[alu];
-
-    EPSON_DEBUG ("-%s\n", __func__);
 
     return TRUE;
 }
@@ -240,40 +237,32 @@ epsonCopy (PixmapPtr pDst,
            int       width,
            int       height)
 {
-    CARD32 src_addr, dst_addr;
-	unsigned int stride;
-    unsigned int bpp;
-
     EpsonExaPriv (pDst);
+    CARD32 src_addr = exaGetPixmapOffset (exaPriv->pSrc);
+    CARD32 dst_addr = exaGetPixmapOffset (exaPriv->pDst);
+    CARD32 src_pitch = exaGetPixmapPitch (exaPriv->pSrc);
+    CARD32 dst_pitch = exaGetPixmapPitch (exaPriv->pDst);
+    unsigned int bytesPerPixel = exaPriv->bytesPerPixel;
+
+    EPSON_DEBUG ("%s %dx%d (%d, %d)->(%d, %d)\n", __func__,
+                 width, height, sx, sy, dx, dy);
 
     if (!width || !height)
         return;
 
-	stride = exaPriv->stride;
-    bpp = exaPriv->bpp;
-
-    EPSON_DEBUG ("+%s %dx%d (%d, %d)->(%d, %d)\n", __func__,
-                 width, height, sx, sy, dx, dy);
-#if 0
-	EPSON_DEBUG ("+%s pSrcIsOffScreen [%d] pDstIsOffScreen [%d]\n", __func__,
-	             exaDrawableIsOffscreen (&(exaPriv->pSrc->drawable)),
-				 exaDrawableIsOffscreen (&(exaPriv->pDst->drawable)));
-    EPSON_DEBUG ("%s, src_off [0x%x] dst_off [0x%x] src_pitch [%d] dst_pitch [%d]\n", __func__,
-                 exaGetPixmapOffset (exaPriv->pSrc), exaGetPixmapOffset (exaPriv->pDst),
-				 exaGetPixmapPitch (exaPriv->pSrc), exaGetPixmapPitch (exaPriv->pDst));
-#endif
     if (exaPriv->negative_dir) {
-        src_addr = (((sy + height - 1) * stride) + (bpp * (sx + width - 1)));
-        dst_addr = (((dy + height - 1) * stride) + (bpp * (dx + width - 1)));
+        src_addr += (((sy + height - 1) * src_pitch) + (bytesPerPixel * (sx + width - 1)));
+        dst_addr += (((dy + height - 1) * dst_pitch) + (bytesPerPixel * (dx + width - 1)));
     } else {
-        src_addr = (sy * stride) + (bpp * sx);
-        dst_addr = (dy * stride) + (bpp * dx);
+        src_addr += (sy * src_pitch) + (bytesPerPixel * sx);
+        dst_addr += (dy * dst_pitch) + (bytesPerPixel * dx);
     }
-    src_addr += exaGetPixmapOffset (exaPriv->pSrc);
-    dst_addr += exaGetPixmapOffset (exaPriv->pDst);
+
+    // Src and Dst are linear
+    EPSON13806_REG (EPSON13806_BLTCTRL0) &= 0x3;
 
     // program BLIT memory offset
-    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = exaPriv->stride >> 1;
+    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = src_pitch / bytesPerPixel;
 
     // program src and dst addresses
     EPSON13806_REG16(EPSON13806_BLTSRCSTART01) = src_addr;
@@ -282,12 +271,12 @@ epsonCopy (PixmapPtr pDst,
     EPSON13806_REG(EPSON13806_BLTDSTSTART2) = dst_addr >> 16;
 
     // program width and height of blit
-    EPSON13806_REG16(EPSON13806_BLTWIDTH) = width-1;
-    EPSON13806_REG16(EPSON13806_BLTHEIGHT) = height-1;
+    EPSON13806_REG16(EPSON13806_BLTWIDTH) = width - 1;
+    EPSON13806_REG16(EPSON13806_BLTHEIGHT) = height - 1;
 
     if (exaPriv->negative_dir) {
         EPSON13806_REG(EPSON13806_BLTOPERATION) = EPSON13806_BLTOPERATION_MOVENEGROP;
-    } else /* positive direction ROP */ {
+    } else {
         EPSON13806_REG(EPSON13806_BLTOPERATION) = EPSON13806_BLTOPERATION_MOVEPOSROP;
     }
 
@@ -295,24 +284,55 @@ epsonCopy (PixmapPtr pDst,
 
     // Wait for operation to complete
     epsonWaitForHwBltDone ();
-
-    EPSON_DEBUG ("-%s\n", __func__);
 }
 
 static void
 epsonDoneCopy (PixmapPtr pDst)
 {
-	EpsonExaPriv (pDst);
-    EPSON_DEBUG ("+%s\n", __func__);
+    EpsonExaPriv (pDst);
+    EPSON_DEBUG ("%s\n", __func__);
 
-	exaPriv->pSrc = NULL;
-	exaPriv->pDst = NULL;
+    exaPriv->pSrc = NULL;
+    exaPriv->pDst = NULL;
 
     // Read from BitBLT data offset 0 to shut it down
-    //(void)EPSON13806_REG(EPSON13806_BITBLTDATA);
-    exaMarkSync(pScreen);
+    (void)EPSON13806_REG (EPSON13806_BITBLTDATA);
 
-    EPSON_DEBUG ("-%s\n", __func__);
+    exaMarkSync(pScreen);
+}
+
+Bool
+epsonUploadToScreen(PixmapPtr pDst,
+                    int       x,
+                    int       y,
+                    int       w,
+                    int       h,
+                    char      *src,
+                    int       src_pitch)
+{
+    EPSON_DEBUG ("%s, x [%d] y [%d] w [%d] h [%d] src [%p] src_pitch [%d]\n",
+                 __func__, x, y, w, h, src, src_pitch);
+    EPSON_DEBUG ("%s, DST: off [0x%x] pitch [%d]\n", __func__,
+                 (unsigned int)exaGetPixmapOffset (pDst),
+                 (int)exaGetPixmapPitch (pDst));
+    return FALSE;
+}
+
+Bool
+epsonDownloadFromScreen(PixmapPtr pSrc,
+                        int       x,
+                        int       y,
+                        int       w,
+                        int       h,
+                        char      *dst,
+                        int       dst_pitch)
+{
+    EPSON_DEBUG ("%s, x [%d] y [%d] w [%d] h [%d] dst [%p] dst_pitch [%d]\n",
+                 __func__, x, y, w, h, dst, dst_pitch);
+    EPSON_DEBUG ("%s, SRC: off [0x%x] pitch [%d]\n", __func__,
+                 (unsigned int)exaGetPixmapOffset (pSrc),
+                 (int)exaGetPixmapPitch (pSrc));
+    return FALSE;
 }
 
 Bool
@@ -327,7 +347,7 @@ epsonDrawInit (ScreenPtr pScreen)
     EpsonExaPriv *exaPriv = NULL;
     static int addr = 0x00000000;
 
-    EPSON_DEBUG ("+%s\n", __func__);
+    EPSON_DEBUG ("%s\n", __func__);
 
     exaPriv = calloc(1, sizeof(EpsonExaPriv));
     if (exaPriv == NULL) {
@@ -335,8 +355,8 @@ epsonDrawInit (ScreenPtr pScreen)
         return FALSE;
     }
 
-	exaPriv->stride = screen->fb.byteStride;
-	exaPriv->bpp = screen->fb.bitsPerPixel >> 3;
+    exaPriv->screenStride = screen->fb.byteStride;
+    exaPriv->bytesPerPixel = screen->fb.bitsPerPixel >> 3;
 
 #if 0
     EPSON13806_REG(EPSON13806_MISC) = 0x00;
@@ -378,7 +398,7 @@ epsonDrawInit (ScreenPtr pScreen)
 
     EPSON13806_REG(EPSON13806_BLTCTRL0) = 0x00;
     EPSON13806_REG(EPSON13806_BLTCTRL1) = 0x01;     // We're using 16 bpp
-    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = exaPriv->stride >> 1; // program BLIT memory offset
+    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = exaPriv->screenStride >> 1; // program BLIT memory offset
 
 #if 0
     EPSON13806_REG(EPSON13806_LUTMODE) = 0x00;
@@ -430,6 +450,9 @@ epsonDrawInit (ScreenPtr pScreen)
     exaPriv->exa.Copy         = epsonCopy;
     exaPriv->exa.DoneCopy     = epsonDoneCopy;
 
+    exaPriv->exa.UploadToScreen     = epsonUploadToScreen;
+    exaPriv->exa.DownloadFromScreen = epsonDownloadFromScreen;
+
     exaPriv->exa.WaitMarker   = epsonWaitMarker;
 
     exaPriv->exa.maxX         = screen->width - 1;
@@ -444,20 +467,19 @@ epsonDrawInit (ScreenPtr pScreen)
         ErrorF("Failed to initialize EXA\n");
         return FALSE;
     } else {
+		ErrorF("Initialized EXA acceleration\n");
         epsons->exaPriv = exaPriv;
     }
 
-    EPSON_DEBUG ("-%s\n", __func__);
     return TRUE;
 }
 
 void
 epsonDrawEnable (ScreenPtr pScreen)
 {
-    EPSON_DEBUG ("+%s\n", __func__);
-    epsonWaitForHwBltDone ();
+    EPSON_DEBUG ("%s\n", __func__);
+    exaWaitSync (pScreen);
     exaMarkSync (pScreen);
-    EPSON_DEBUG ("-%s\n", __func__);
 }
 
 void
@@ -469,13 +491,13 @@ epsonDrawDisable (ScreenPtr pScreen)
 void
 epsonDrawFini (ScreenPtr pScreen)
 {
-	EPSON_DEBUG ("%s\n", __func__);
+    EPSON_DEBUG ("%s\n", __func__);
 }
 
 void
 initEpson13806(void)
 {
-    EPSON_DEBUG ("+%s\n", __func__);
+    EPSON_DEBUG ("%s\n", __func__);
 
     // Map Epson S1D13806 registers
     regbase = epsonMapDevice (EPSON13806_PHYSICAL_REG_ADDR, EPSON13806_GPIO_REGSIZE);
@@ -487,19 +509,9 @@ initEpson13806(void)
     if ((rev_code >> 2) != 0x07)
         perror("ERROR: EPSON13806 Display Controller NOT FOUND!\n");
 #endif
-
-    EPSON_DEBUG ("-%s\n", __func__);
 }
 
 void
 exaDDXDriverInit(ScreenPtr pScreen)
 {
-    ExaScreenPriv(pScreen);
-
-    pExaScr->migration = ExaMigrationSmart;
-#ifdef __DEBUG_EPSON__
-    pExaScr->checkDirtyCorrectness = TRUE;
-#else
-    pExaScr->checkDirtyCorrectness = FALSE;
-#endif
 }

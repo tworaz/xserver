@@ -44,29 +44,29 @@
 #endif
 
 typedef struct _epsonPriv {
-    struct fb_var_screeninfo	var;
-    struct fb_fix_screeninfo	fix;
-    __u16			red[256];
-    __u16			green[256];
-    __u16			blue[256];
-    int				fd;
-    char			*fb;
-    char			*fb_base;
+    struct fb_var_screeninfo    var;
+    struct fb_fix_screeninfo    fix;
+    __u16           red[256];
+    __u16           green[256];
+    __u16           blue[256];
+    int             fd;
+    char            *fb;
+    char            *fb_base;
 } EpsonPriv;
 
 typedef struct _epsonExaPriv {
-    ExaDriverRec	exa;
-	unsigned int	bpp;
-	unsigned int	stride;
-	PixmapPtr		pSrc;
-	PixmapPtr		pDst;
-    int         	negative_dir;
+    ExaDriverRec    exa;
+    unsigned int    bytesPerPixel;
+    unsigned int    screenStride;
+    PixmapPtr       pSrc;
+    PixmapPtr       pDst;
+    int             negative_dir;
 } EpsonExaPriv;
 
 typedef struct _epsonScrPriv {
-    Rotation		randr;
-    Bool			shadow;
-    EpsonExaPriv	*exaPriv;
+    Rotation        randr;
+    Bool            shadow;
+    EpsonExaPriv    *exaPriv;
 } EpsonScrPriv;
 
 extern char*        fbdevDevicePath;

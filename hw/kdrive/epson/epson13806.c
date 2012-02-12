@@ -79,9 +79,9 @@ epsonInitialize (KdCardInfo *card, EpsonPriv *priv)
 
     if (priv->fb_base == (char *)-1)
     {
-		perror("ERROR: mmap framebuffer fails!");
-		close (priv->fd);
-		return FALSE;
+        perror("ERROR: mmap framebuffer fails!");
+        close (priv->fd);
+        return FALSE;
     }
     off = (unsigned long) priv->fix.smem_start % (unsigned long) getpagesize();
     priv->fb = priv->fb_base + off;
@@ -93,7 +93,7 @@ void *
 epsonMapDevice (CARD32 addr, CARD32 size)
 {
     void    *a;
-    int	    fd;
+    int     fd;
 
 #ifdef __arm__
     fd = open ("/dev/mem", O_RDWR|O_SYNC);
@@ -101,14 +101,14 @@ epsonMapDevice (CARD32 addr, CARD32 size)
     fd = open ("/dev/mem", O_RDWR);
 #endif
     if (fd < 0)
-	FatalError ("KdMapDevice: failed to open /dev/mem (%s)\n",
-		    strerror (errno));
+    FatalError ("KdMapDevice: failed to open /dev/mem (%s)\n",
+            strerror (errno));
 
     a = mmap ((caddr_t) 0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, addr);
     close (fd);
     if ((long) a == -1)
-	FatalError ("KdMapDevice: failed to map frame buffer (%s)\n",
-		    strerror (errno));
+    FatalError ("KdMapDevice: failed to map frame buffer (%s)\n",
+            strerror (errno));
     return a;
 }
 
@@ -151,9 +151,9 @@ epsonMakeContig (Pixel orig, Pixel others)
 static Bool
 epsonMapFramebuffer (KdScreenInfo *screen)
 {
-    EpsonScrPriv	*scrpriv = screen->driver;
-    KdPointerMatrix	m;
-    EpsonPriv		*priv = screen->card->driver;
+    EpsonScrPriv    *scrpriv = screen->driver;
+    KdPointerMatrix m;
+    EpsonPriv       *priv = screen->card->driver;
 
     if (scrpriv->randr != RR_Rotate_0)
         scrpriv->shadow = TRUE;
@@ -218,7 +218,6 @@ epsonScreenInitialize (KdScreenInfo *screen, EpsonScrPriv *scrpriv)
     while (depth && !(allbits & (1 << (depth - 1))))
         depth--;
 
-
     screen->fb.depth = depth;
     screen->fb.bitsPerPixel = priv->var.bits_per_pixel;
     screen->rate = 60;
@@ -267,9 +266,9 @@ static void
 epsonSetScreenSizes (ScreenPtr pScreen)
 {
     KdScreenPriv(pScreen);
-    KdScreenInfo	*screen = pScreenPriv->screen;
-    EpsonScrPriv	*scrpriv = screen->driver;
-    EpsonPriv		*priv = screen->card->driver;
+    KdScreenInfo    *screen = pScreenPriv->screen;
+    EpsonScrPriv    *scrpriv = screen->driver;
+    EpsonPriv       *priv = screen->card->driver;
 
     if (scrpriv->randr & (RR_Rotate_0|RR_Rotate_180))
     {
@@ -298,11 +297,11 @@ static Bool
 epsonSetShadow (ScreenPtr pScreen)
 {
     KdScreenPriv(pScreen);
-    KdScreenInfo	*screen = pScreenPriv->screen;
-    EpsonScrPriv	*scrpriv = screen->driver;
-    EpsonPriv		*priv = screen->card->driver;
-    ShadowUpdateProc	update;
-    ShadowWindowProc	window;
+    KdScreenInfo    *screen = pScreenPriv->screen;
+    EpsonScrPriv    *scrpriv = screen->driver;
+    EpsonPriv       *priv = screen->card->driver;
+    ShadowUpdateProc    update;
+    ShadowWindowProc    window;
     int                 useYX = 0;
 
 #ifdef __arm__
@@ -382,13 +381,13 @@ epsonRandRGetInfo (ScreenPtr pScreen, Rotation *rotations)
 
 static Bool
 epsonRandRSetConfig (ScreenPtr       pScreen,
-		             Rotation        randr,
-		             int             rate,
-		             RRScreenSizePtr pSize)
+                     Rotation        randr,
+                     int             rate,
+                     RRScreenSizePtr pSize)
 {
     KdScreenPriv(pScreen);
-    KdScreenInfo	*screen = pScreenPriv->screen;
-    EpsonScrPriv	*scrpriv = screen->driver;
+    KdScreenInfo    *screen = pScreenPriv->screen;
+    EpsonScrPriv    *scrpriv = screen->driver;
     Bool            wasEnabled = pScreenPriv->enabled;
     EpsonScrPriv    oldscr;
     int             oldwidth;
@@ -604,7 +603,7 @@ epsonEnable (ScreenPtr pScreen)
             priv->blue[i] = i * 65535 / ((1 << priv->var.blue.length) - 1);
         }
 
-	    epsonUpdateFbColormap(priv, 0, i);
+        epsonUpdateFbColormap(priv, 0, i);
     }
     return TRUE;
 }
@@ -664,8 +663,8 @@ void
 epsonGetColors (ScreenPtr pScreen, int n, xColorItem *pdefs)
 {
     KdScreenPriv(pScreen);
-    EpsonPriv        *priv = pScreenPriv->card->driver;
-    struct fb_cmap  cmap;
+    EpsonPriv      *priv = pScreenPriv->card->driver;
+    struct fb_cmap cmap;
     int            p;
     int            k;
     int            min, max;
