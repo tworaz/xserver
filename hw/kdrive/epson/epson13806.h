@@ -20,8 +20,8 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 /*
- * epson13806draw.h - Implementation of hard ware accelerated functions for epson S1D13806
- *               Graphic controller.
+ * epson13806draw.h - Implementation of hardware accelerated functions for
+ *                    Epson S1D13806 Graphic controller.
  *
  * History:
  * 28-Jan-04  C.Stylianou       PRJ NBL: Created from fbdev.h
@@ -44,23 +44,32 @@
 #endif
 
 typedef struct _epsonPriv {
-    struct fb_var_screeninfo	var;
-    struct fb_fix_screeninfo	fix;
-    __u16			red[256];
-    __u16			green[256];
-    __u16			blue[256];
-    int				fd;
-    char			*fb;
-    char			*fb_base;
+    struct fb_var_screeninfo    var;
+    struct fb_fix_screeninfo    fix;
+    __u16           red[256];
+    __u16           green[256];
+    __u16           blue[256];
+    int             fd;
+    char            *fb;
+    char            *fb_base;
 } EpsonPriv;
 
+typedef struct _epsonExaPriv {
+    ExaDriverRec    exa;
+    unsigned int    bytesPerPixel;
+    unsigned int    screenStride;
+    PixmapPtr       pSrc;
+    PixmapPtr       pDst;
+    int             negative_dir;
+} EpsonExaPriv;
+
 typedef struct _epsonScrPriv {
-    Rotation		randr;
-    Bool		shadow;
-    ExaDriverRec	exa;
+    Rotation        randr;
+    Bool            shadow;
+    EpsonExaPriv    *exaPriv;
 } EpsonScrPriv;
 
-extern KdCardFuncs  epsonFuncs;
+extern char*        fbdevDevicePath;
 
 Bool
 epsonInitialize (KdCardInfo *card, EpsonPriv *priv);
@@ -75,10 +84,13 @@ Bool
 epsonScreenInit (KdScreenInfo *screen);
 
 Bool
-epsonScreenInitialize (KdScreenInfo *screen, EpsonScrPriv *scrpriv);
+epsonInitScreen (ScreenPtr pScreen);
 
 Bool
-epsonInitScreen (ScreenPtr pScreen);
+epsonFinishInitScreen (ScreenPtr pScreen);
+
+Bool
+epsonCreateResources (ScreenPtr pScreen);
 
 void
 epsonPreserve (KdCardInfo *card);
@@ -107,11 +119,6 @@ epsonGetColors (ScreenPtr pScreen, int n, xColorItem *pdefs);
 void
 epsonPutColors (ScreenPtr pScreen, int n, xColorItem *pdefs);
 
-/*
- * History:
- * 28-Jan-04  C.Stylianou       NBL: Added the following prototypes for h/w accel.
- *
- */
 Bool
 epsonDrawInit (ScreenPtr pScreen);
 
@@ -124,13 +131,7 @@ epsonDrawDisable (ScreenPtr pScreen);
 void
 epsonDrawFini (ScreenPtr pScreen);
 
-/*
- * History:
- * 28-Jan-04  C.Stylianou       NBL: Maps to Epson registers
- *
- */
 void
 initEpson13806(void);
-
 
 #endif /* __EPSON13806_H_ */

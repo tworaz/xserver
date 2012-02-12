@@ -20,30 +20,34 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 /*
- * epson13806draw.c - Implementation of hardware accelerated functions for epson S1D13806
- *               Graphic controller.
+ * epson13806draw.c - Implementation of hardware accelerated functions for
+ *                    Epson S1D13806 Graphic controller.
  *
  * History:
  * 28-Jan-04  C.Stylianou       PRJ NBL: Created from chipsdraw.c
  *
  */
 
-#include    "epson13806.h"
-#include    "epson13806draw.h"
-#include    "epson13806reg.h"
-
-#include    "gcstruct.h"
-#include    "scrnintstr.h"
-#include    "pixmapstr.h"
-#include    "regionstr.h"
-#include    "mistruct.h"
-#include    "dixfontstr.h"
-#include    "fb.h"
-#include    "migc.h"
-#include    "miline.h"
 #include    "exa.h"
 #include    "exa_priv.h"
 
+#include    "epson13806.h"
+#include    "epson13806reg.h"
+
+//#define __DEBUG_EPSON__
+
+#ifdef __DEBUG_EPSON__
+    #define EPSON_DEBUG(...) fprintf(stderr, __VA_ARGS__)
+#else
+    #define EPSON_DEBUG(...) do { } while (0)
+#endif
+
+#define EpsonExaPriv(pPix) \
+    ScreenPtr pScreen = pPix->drawable.pScreen; \
+    KdScreenPriv(pScreen); \
+    KdScreenInfo *screen = pScreenPriv->screen; \
+    EpsonScrPriv *scrpriv = screen->driver; \
+    EpsonExaPriv *exaPriv = scrpriv->exaPriv; \
 
 // Functionality of BitBLT ROP register for Epson S1D13806 Graphics controller
 CARD8 epson13806Rop[16] = {
@@ -65,181 +69,60 @@ CARD8 epson13806Rop[16] = {
     /* GXset        */      0x0F,         /* 1 */
 };
 
-
-
-#undef __DEBUG_EPSON__
-#undef __DEBUG_EPSON_FBSET__
-#undef __DEBUG_EPSON_SOLID__
-#undef __DEBUG_EPSON_COPY__
-
-
-#ifdef __DEBUG_EPSON__
-    #define EPSON_DEBUG(a) a
-#else
-    #define EPSON_DEBUG(a)
-#endif
-
-#ifdef __DEBUG_EPSON_FBSET__
-    #define EPSON_DEBUG_FBSET(a) a
-#else
-    #define EPSON_DEBUG_FBSET(a)
-#endif
-
-#ifdef __DEBUG_EPSON_SOLID__
-    #define EPSON_DEBUG_SOLID(a) a
-#else
-    #define EPSON_DEBUG_SOLID(a)
-#endif
-
-#ifdef __DEBUG_EPSON_COPY__
-    #define EPSON_DEBUG_COPY(a) a
-#else
-    #define EPSON_DEBUG_COPY(a)
-#endif
-
-
-static unsigned int    byteStride;     // Distance between lines in the frame buffer (in bytes)
-static unsigned int    bytesPerPixel;
-static unsigned int    pixelStride;
-
 static unsigned char *regbase;
 
-/*
- * epsonSet
- *
- * Description:    Sets Epson variables
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
-
-static void
-epsonSet (ScreenPtr pScreen)
-{
-    KdScreenPriv(pScreen);
-
-    EPSON_DEBUG_FBSET (fprintf(stderr,"+epsonSet\n"));
-
-    byteStride = pScreenPriv->screen->fb.byteStride;
-    bytesPerPixel = pScreenPriv->screen->fb.bitsPerPixel >> 3;
-    pixelStride = pScreenPriv->screen->fb.pixelStride;
-
-    EPSON_DEBUG_FBSET (fprintf(stderr,"byteStride:     [%x]\n", pScreenPriv->screen->fb.byteStride));
-    EPSON_DEBUG_FBSET (fprintf(stderr,"bytesPerPixel:  [%x]\n", pScreenPriv->screen->fb.bitsPerPixel >> 3));
-    EPSON_DEBUG_FBSET (fprintf(stderr,"pixelStride:    [%x]\n", pScreenPriv->screen->fb.pixelStride));
-
-    EPSON_DEBUG_FBSET (fprintf(stderr,"-epsonSet\n"));
-}
-
-
-/*
- * epsonBg
- *
- * Description:    Sets background colour
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
-
-static void
+static inline void
 epsonBg (Pixel bg)
 {
-   EPSON13806_REG16(EPSON13806_BLTBGCOLOR) = bg;
+    EPSON13806_REG16(EPSON13806_BLTBGCOLOR) = bg;
 }
 
-
-/*
- * epsonFg
- *
- * Description:    Sets foreground colour
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
-
-static void
+static inline void
 epsonFg (Pixel fg)
 {
     EPSON13806_REG16(EPSON13806_BLTFGCOLOR) = fg;
 }
 
-
-/*
- * epsonWaitForHwBltDone
- *
- * Description:    Wait for previous blt to be done before programming any blt registers
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
-
-static void
+static inline void
 epsonWaitForHwBltDone (void)
 {
     while (EPSON13806_REG (EPSON13806_BLTCTRL0) & EPSON13806_BLTCTRL0_ACTIVE) {}
 }
 
-
-/*
- * epsonDrawSync
- *
- * Description:    Sync hardware acceleration
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
-
 static void
 epsonWaitMarker (ScreenPtr pScreen, int marker)
 {
-    EPSON_DEBUG (fprintf(stderr,"+epsonDrawSync\n"));
+    EPSON_DEBUG ("%s\n", __func__);
 
     epsonWaitForHwBltDone ();
-
-    EPSON_DEBUG (fprintf(stderr,"-epsonDrawSync\n"));
 }
 
-
-/*
- * epsonPrepareSolid
- *
- * Description:    Prepare Solid Fill i.e, can it be accelerated
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
-
 static Bool
-epsonPrepareSolid (PixmapPtr pPixmap,
+epsonPrepareSolid (PixmapPtr pPix,
                    int       alu,
                    Pixel     pm,
                    Pixel     fg)
 {
-    FbBits  depthMask;
+    EpsonExaPriv (pPix);
 
-    EPSON_DEBUG_SOLID (fprintf(stderr,"+epsonPrepareSolid\n"));
+    EPSON_DEBUG ("%s, alu [0x%x] bpp [%d]\n", __func__, alu,
+                 pPix->drawable.bitsPerPixel);
 
-    depthMask = FbFullMask(pPixmap->drawable.depth);
-    if ((pm & depthMask) != depthMask)
+    if (pPix->drawable.bitsPerPixel != (exaPriv->bytesPerPixel << 3))
         return FALSE;
 
-	epsonSet (pPixmap->drawable.pScreen);
+    if (!EXA_PM_IS_SOLID (&(pPix->drawable), pm))
+        return FALSE;
+
     fg &= 0xffff;
     epsonFg (fg);
     epsonBg (fg);
 
     epsonWaitForHwBltDone ();
 
-    EPSON_DEBUG_SOLID (fprintf(stderr,"Solid.alu [0x%x], [%d]\n", alu ,epson13806Rop[alu]));
     EPSON13806_REG(EPSON13806_BLTROP) = epson13806Rop[alu];
 
-    if (epson13806Rop[alu] == GXnoop)
+    if (alu == GXnoop)
     {
         EPSON13806_REG(EPSON13806_BLTOPERATION) = EPSON13806_BLTOPERATION_PATFILLROP;
     }
@@ -248,33 +131,32 @@ epsonPrepareSolid (PixmapPtr pPixmap,
         EPSON13806_REG(EPSON13806_BLTOPERATION) = EPSON13806_BLTOPERATION_SOLIDFILL;
     }
 
-    EPSON_DEBUG_SOLID (fprintf(stderr,"-epsonPrepareSolid\n"));
     return TRUE;
 }
-
-
-/*
- * epsonSolid
- *
- * Description:    Executes Solid Fill
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
 
 static void
 epsonSolid (PixmapPtr pPix, int x1, int y1, int x2, int y2)
 {
+    int pitch = exaGetPixmapPitch (pPix);
     CARD32  dst_addr;
     int width, height;
 
-    EPSON_DEBUG_SOLID (fprintf(stderr,"+epsonSolid\n"));
-    EPSON_DEBUG_SOLID (fprintf(stderr,"Solid X1 [%d] Y1 [%d] X2 [%d] Y2 [%d]\n", x1, y1, x2, y2));
+    EpsonExaPriv (pPix);
 
-    dst_addr = y1 * byteStride + x1 * bytesPerPixel;
-    width = ((x2 - x1)-1);
-    height = ((y2 - y1)-1);
+    EPSON_DEBUG ("%s Solid X1 [%d] Y1 [%d] X2 [%d] Y2 [%d]\n",
+                 __func__, x1, y1, x2, y2);
+
+    dst_addr = exaGetPixmapOffset (pPix);
+    dst_addr += (y1 * pitch) + (x1 * exaPriv->bytesPerPixel);
+
+    width = ((x2 - x1) - 1);
+    height = ((y2 - y1) - 1);
+
+    // Destination is linear
+    EPSON13806_REG (EPSON13806_BLTCTRL0) &= 0x2;
+
+    // program BLIT memory offset
+    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = pitch / exaPriv->bytesPerPixel;
 
     // program dst address
     EPSON13806_REG16(EPSON13806_BLTDSTSTART01) = dst_addr;
@@ -287,120 +169,100 @@ epsonSolid (PixmapPtr pPix, int x1, int y1, int x2, int y2)
     EPSON13806_REG(EPSON13806_BLTCTRL0) = EPSON13806_BLTCTRL0_ACTIVE;
 
     // Wait for operation to complete
-    while (EPSON13806_REG(EPSON13806_BLTCTRL0) & EPSON13806_BLTCTRL0_ACTIVE) {}
-
-    EPSON_DEBUG_SOLID (fprintf(stderr,"-epsonSolid\n"));
+    epsonWaitForHwBltDone ();
 }
-
-
-/*
- * epsonDoneSolid
- *
- * Description:    Done Solid
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
 
 static void
 epsonDoneSolid (PixmapPtr pPix)
 {
-    EPSON_DEBUG_SOLID (fprintf(stderr,"+epsonDoneSolid\n"));
+    ScreenPtr pScreen = pPix->drawable.pScreen;
+
+    EPSON_DEBUG ("%s\n", __func__);
 
     // Read from BitBLT data offset 0 to shut it down
-    //(void)EPSON13806_REG(EPSON13806_BITBLTDATA);
+    (void)EPSON13806_REG (EPSON13806_BITBLTDATA);
 
-    EPSON_DEBUG_SOLID (fprintf(stderr,"-epsonDoneSolid\n"));
+    exaMarkSync(pScreen);
 }
 
-
-/*
- * epsonPrepareCopy
- *
- * Description:    Prepares BitBLT, i.e, can it be accelerated
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
-
 static Bool
-epsonPrepareCopy (PixmapPtr    pSrcPixmap,
-          PixmapPtr    pDstPixmap,
-          int        dx,
-          int        dy,
-          int        alu,
-          Pixel        pm)
+epsonPrepareCopy (PixmapPtr pSrc,
+                  PixmapPtr pDst,
+                  int       xdir,
+                  int       ydir,
+                  int       alu,
+                  Pixel     pm)
 {
-    FbBits  depthMask;
+    EpsonExaPriv (pDst);
+    unsigned int bitsPerPixel = exaPriv->bytesPerPixel << 3;
 
-    EPSON_DEBUG_COPY (fprintf(stderr,"+epsonPrepareCopy dx [0x%x] dy [0x%x]\n", dx, dy));
+    // We're using EXA_TWO_BITBLT_DIRECTIONS xdir should always equal ydir
+    assert (xdir == ydir);
 
-    depthMask = FbFullMask(pDstPixmap->drawable.depth);
+    EPSON_DEBUG ("%s, neg_dir [%d] alu [0x%x]\n", __func__, (xdir < 0), alu);
+    EPSON_DEBUG ("%s, src_off [0x%.6x] src_pitch [%d] src_bpp [%d]\n", __func__,
+                 (unsigned int)exaGetPixmapOffset(pSrc), (int)exaGetPixmapPitch (pSrc),
+                 pSrc->drawable.bitsPerPixel);
+    EPSON_DEBUG ("%s, dst_off [0x%.6x] dst_pitch [%d] dst_bpp [%d]\n", __func__,
+                 (unsigned int)exaGetPixmapOffset(pDst), (int)exaGetPixmapPitch (pDst),
+                 pDst->drawable.bitsPerPixel);
 
-    if ((pm & depthMask) != depthMask)
+    if (pSrc->drawable.bitsPerPixel != bitsPerPixel ||
+        pDst->drawable.bitsPerPixel != bitsPerPixel)
         return FALSE;
 
-    epsonSet (pDstPixmap->drawable.pScreen);
-	epsonWaitForHwBltDone ();
-    EPSON13806_REG(EPSON13806_BLTROP) = epson13806Rop[alu];
+    if (!EXA_PM_IS_SOLID (&(pDst->drawable), pm))
+        return FALSE;
 
-    EPSON_DEBUG_COPY (fprintf(stderr,"-epsonPrepareCopy\n"));
+    if (exaGetPixmapPitch (pSrc) != exaGetPixmapPitch (pDst))
+        return FALSE;
+
+    exaPriv->negative_dir = (xdir < 0);
+    exaPriv->pSrc = pSrc;
+    exaPriv->pDst = pDst;
+
+    epsonWaitForHwBltDone ();
+	exaMarkSync(pDst->drawable.pScreen);
+    EPSON13806_REG(EPSON13806_BLTROP) = epson13806Rop[alu];
 
     return TRUE;
 }
 
-
-/*
- * epsonCopy
- *
- * Description:    Executes BitBLT
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
-
 static void
 epsonCopy (PixmapPtr pDst,
-           int srcX,
-           int srcY,
-           int dstX,
-           int dstY,
-           int width,
-           int height)
+           int       sx,
+           int       sy,
+           int       dx,
+           int       dy,
+           int       width,
+           int       height)
 {
-    int    src_addr, dst_addr;
-    int neg_dir = FALSE;
+    EpsonExaPriv (pDst);
+    CARD32 src_addr = exaGetPixmapOffset (exaPriv->pSrc);
+    CARD32 dst_addr = exaGetPixmapOffset (exaPriv->pDst);
+    CARD32 src_pitch = exaGetPixmapPitch (exaPriv->pSrc);
+    CARD32 dst_pitch = exaGetPixmapPitch (exaPriv->pDst);
+    unsigned int bytesPerPixel = exaPriv->bytesPerPixel;
 
-    EPSON_DEBUG_COPY (fprintf(stderr,"+epsonCopy\n"));
+    EPSON_DEBUG ("%s %dx%d (%d, %d)->(%d, %d)\n", __func__,
+                 width, height, sx, sy, dx, dy);
 
     if (!width || !height)
         return;
 
-    src_addr = srcX * bytesPerPixel + srcY * byteStride;
-    dst_addr = dstX * bytesPerPixel + dstY * byteStride;
-
-    /*
-     * See if regions overlap and dest region is beyond source region.
-     * If so, we need to do a move BLT in negative direction. Only applies
-     * if the BLT is not transparent.
-     */
-
-    if ((srcX + width  > dstX) && (srcX < dstX + width) &&
-        (srcY + height > dstY) && (srcY < dstY + height) &&
-        (dst_addr > src_addr))
-    {
-        neg_dir = TRUE;
-
-        // negative direction : get the coords of lower right corner
-        src_addr += byteStride * (height-1) + bytesPerPixel * (width-1);
-        dst_addr += byteStride * (height-1) + bytesPerPixel * (width-1);
+    if (exaPriv->negative_dir) {
+        src_addr += (((sy + height - 1) * src_pitch) + (bytesPerPixel * (sx + width - 1)));
+        dst_addr += (((dy + height - 1) * dst_pitch) + (bytesPerPixel * (dx + width - 1)));
+    } else {
+        src_addr += (sy * src_pitch) + (bytesPerPixel * sx);
+        dst_addr += (dy * dst_pitch) + (bytesPerPixel * dx);
     }
 
+    // Src and Dst are linear
+    EPSON13806_REG (EPSON13806_BLTCTRL0) &= 0x3;
+
     // program BLIT memory offset
-    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = byteStride/2;
+    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = src_pitch / bytesPerPixel;
 
     // program src and dst addresses
     EPSON13806_REG16(EPSON13806_BLTSRCSTART01) = src_addr;
@@ -409,65 +271,92 @@ epsonCopy (PixmapPtr pDst,
     EPSON13806_REG(EPSON13806_BLTDSTSTART2) = dst_addr >> 16;
 
     // program width and height of blit
-    EPSON13806_REG16(EPSON13806_BLTWIDTH) = width-1;
-    EPSON13806_REG16(EPSON13806_BLTHEIGHT) = height-1;
+    EPSON13806_REG16(EPSON13806_BLTWIDTH) = width - 1;
+    EPSON13806_REG16(EPSON13806_BLTHEIGHT) = height - 1;
 
-    // select pos/neg move BLIT
-    EPSON13806_REG(EPSON13806_BLTOPERATION) = neg_dir ?
-                EPSON13806_BLTOPERATION_MOVENEGROP : EPSON13806_BLTOPERATION_MOVEPOSROP;
+    if (exaPriv->negative_dir) {
+        EPSON13806_REG(EPSON13806_BLTOPERATION) = EPSON13806_BLTOPERATION_MOVENEGROP;
+    } else {
+        EPSON13806_REG(EPSON13806_BLTOPERATION) = EPSON13806_BLTOPERATION_MOVEPOSROP;
+    }
 
     EPSON13806_REG(EPSON13806_BLTCTRL0) = EPSON13806_BLTCTRL0_ACTIVE;
 
     // Wait for operation to complete
-    while (EPSON13806_REG(EPSON13806_BLTCTRL0) & EPSON13806_BLTCTRL0_ACTIVE) {}
-
-    EPSON_DEBUG_COPY (fprintf(stderr,"-epsonCopy\n"));
+    epsonWaitForHwBltDone ();
 }
-
-
-/*
- * epsonDoneCopy
- *
- * Description:    Done Copy
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
 
 static void
 epsonDoneCopy (PixmapPtr pDst)
 {
-    EPSON_DEBUG_COPY (fprintf(stderr,"+epsonDoneCopy\n"));
+    EpsonExaPriv (pDst);
+    EPSON_DEBUG ("%s\n", __func__);
+
+    exaPriv->pSrc = NULL;
+    exaPriv->pDst = NULL;
 
     // Read from BitBLT data offset 0 to shut it down
-    //(void)EPSON13806_REG(EPSON13806_BITBLTDATA);
+    (void)EPSON13806_REG (EPSON13806_BITBLTDATA);
 
-    EPSON_DEBUG_COPY (fprintf(stderr,"-epsonDoneCopy\n"));
+    exaMarkSync(pScreen);
 }
 
+Bool
+epsonUploadToScreen(PixmapPtr pDst,
+                    int       x,
+                    int       y,
+                    int       w,
+                    int       h,
+                    char      *src,
+                    int       src_pitch)
+{
+    EPSON_DEBUG ("%s, x [%d] y [%d] w [%d] h [%d] src [%p] src_pitch [%d]\n",
+                 __func__, x, y, w, h, src, src_pitch);
+    EPSON_DEBUG ("%s, DST: off [0x%x] pitch [%d]\n", __func__,
+                 (unsigned int)exaGetPixmapOffset (pDst),
+                 (int)exaGetPixmapPitch (pDst));
+    return FALSE;
+}
 
-/*
- * epsonDrawInit
- *
- * Description:    Configure the Epson S1D13806 for a 800x600 TFT colour display
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
+Bool
+epsonDownloadFromScreen(PixmapPtr pSrc,
+                        int       x,
+                        int       y,
+                        int       w,
+                        int       h,
+                        char      *dst,
+                        int       dst_pitch)
+{
+    EPSON_DEBUG ("%s, x [%d] y [%d] w [%d] h [%d] dst [%p] dst_pitch [%d]\n",
+                 __func__, x, y, w, h, dst, dst_pitch);
+    EPSON_DEBUG ("%s, SRC: off [0x%x] pitch [%d]\n", __func__,
+                 (unsigned int)exaGetPixmapOffset (pSrc),
+                 (int)exaGetPixmapPitch (pSrc));
+    return FALSE;
+}
 
 Bool
 epsonDrawInit (ScreenPtr pScreen)
 {
-    KdScreenPriv(pScreen);
+    //KdScreenPriv(pScreen);
+    KdPrivScreenPtr pScreenPriv = ((KdPrivScreenPtr) dixLookupPrivate(&(pScreen->devPrivates), kdScreenPrivateKey));
+
     KdScreenInfo *screen = pScreenPriv->screen;
     EpsonScrPriv *epsons = screen->driver;
+    EpsonPriv    *priv = screen->card->driver;
+    EpsonExaPriv *exaPriv = NULL;
     static int addr = 0x00000000;
 
-    EPSON_DEBUG (fprintf(stderr,"+epsonDrawInit\n"));
+    EPSON_DEBUG ("%s\n", __func__);
 
-    epsonSet(pScreen);
+    exaPriv = calloc(1, sizeof(EpsonExaPriv));
+    if (exaPriv == NULL) {
+        perror("Failed to allocate EXA private data structure\n");
+        return FALSE;
+    }
+
+    exaPriv->screenStride = screen->fb.byteStride;
+    exaPriv->bytesPerPixel = screen->fb.bitsPerPixel >> 3;
 
 #if 0
     EPSON13806_REG(EPSON13806_MISC) = 0x00;
@@ -507,10 +396,9 @@ epsonDrawInit (ScreenPtr pScreen)
     EPSON13806_REG(EPSON13806_LCDFIFOLOW) = 0x00;
 #endif
 
-
     EPSON13806_REG(EPSON13806_BLTCTRL0) = 0x00;
     EPSON13806_REG(EPSON13806_BLTCTRL1) = 0x01;     // We're using 16 bpp
-    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = byteStride>>1; // program BLIT memory offset
+    EPSON13806_REG16(EPSON13806_BLTSTRIDE) = exaPriv->screenStride >> 1; // program BLIT memory offset
 
 #if 0
     EPSON13806_REG(EPSON13806_LUTMODE) = 0x00;
@@ -543,126 +431,87 @@ epsonDrawInit (ScreenPtr pScreen)
     EPSON13806_REG16(EPSON13806_GPIOCTRL) |= 0x00fc;
 #endif
 
-    memset(&epsons->exa, 0, sizeof(ExaDriverRec));
-    epsons->exa.exa_major = 2;
-    epsons->exa.exa_minor = 0;
+    exaPriv->exa.exa_major = 2;
+    exaPriv->exa.exa_minor = 0;
 
-    epsons->exa.PrepareSolid	= epsonPrepareSolid;
-    epsons->exa.Solid		= epsonSolid;
-    epsons->exa.DoneSolid	= epsonDoneSolid;
+    exaPriv->exa.memoryBase    = (CARD8 *) (priv->fb);
+    exaPriv->exa.offScreenBase = screen->fb.byteStride * screen->height;
+    exaPriv->exa.memorySize    = priv->fix.smem_len;
 
-    epsons->exa.PrepareCopy	= epsonPrepareCopy;
-    epsons->exa.Copy		= epsonCopy;
-    epsons->exa.DoneCopy	= epsonDoneCopy;
+    EPSON_DEBUG ("Memory Base = 0x%x\n", (unsigned int)exaPriv->exa.memoryBase);
+    EPSON_DEBUG ("Memory Size = 0x%x\n", (unsigned int)exaPriv->exa.memorySize);
+    EPSON_DEBUG ("Offscreen Base = 0x%x\n", (unsigned int)exaPriv->exa.offScreenBase);
 
-    epsons->exa.WaitMarker	= epsonWaitMarker;
+    exaPriv->exa.PrepareSolid = epsonPrepareSolid;
+    exaPriv->exa.Solid        = epsonSolid;
+    exaPriv->exa.DoneSolid    = epsonDoneSolid;
 
-    epsons->exa.flags		= EXA_OFFSCREEN_PIXMAPS;
+    exaPriv->exa.PrepareCopy  = epsonPrepareCopy;
+    exaPriv->exa.Copy         = epsonCopy;
+    exaPriv->exa.DoneCopy     = epsonDoneCopy;
 
-    if (!exaDriverInit (pScreen, &epsons->exa)) {
+    exaPriv->exa.UploadToScreen     = epsonUploadToScreen;
+    exaPriv->exa.DownloadFromScreen = epsonDownloadFromScreen;
+
+    exaPriv->exa.WaitMarker   = epsonWaitMarker;
+
+    exaPriv->exa.maxX         = screen->width - 1;
+    exaPriv->exa.maxY         = screen->height - 1;
+
+    exaPriv->exa.pixmapOffsetAlign = 4;
+    exaPriv->exa.pixmapPitchAlign  = 4;
+
+    exaPriv->exa.flags        = EXA_OFFSCREEN_PIXMAPS | EXA_TWO_BITBLT_DIRECTIONS;
+
+    if (!exaDriverInit (pScreen, &(exaPriv->exa))) {
         ErrorF("Failed to initialize EXA\n");
         return FALSE;
+    } else {
+		ErrorF("Initialized EXA acceleration\n");
+        epsons->exaPriv = exaPriv;
     }
 
-    EPSON_DEBUG (fprintf(stderr,"-epsonDrawInit\n"));
     return TRUE;
 }
-
-
-/*
- * epsonDrawEnable
- *
- * Description:    Enables hardware acceleration
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
 
 void
 epsonDrawEnable (ScreenPtr pScreen)
 {
-    EPSON_DEBUG (fprintf(stderr,"+epsonDrawEnable\n"));
-    epsonWaitForHwBltDone ();
+    EPSON_DEBUG ("%s\n", __func__);
+    exaWaitSync (pScreen);
     exaMarkSync (pScreen);
-    EPSON_DEBUG (fprintf(stderr,"-epsonDrawEnable\n"));
 }
-
-
-/*
- * epsonDrawDisable
- *
- * Description:    Disables hardware acceleration
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
 
 void
 epsonDrawDisable (ScreenPtr pScreen)
 {
-    EPSON_DEBUG (fprintf(stderr,"+epsonDrawDisable\n"));
+    EPSON_DEBUG ("%s\n", __func__);
 }
-
-
-/*
- * epsonDrawFini
- *
- * Description:    Finish hardware acceleration
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
 
 void
 epsonDrawFini (ScreenPtr pScreen)
 {
-    EPSON_DEBUG (fprintf(stderr,"+epsonDrawFini\n"));
+    EPSON_DEBUG ("%s\n", __func__);
 }
-
-
-/*
- * initEpson13806
- *
- * Description:    Maps Epson S1D13806 registers
- *
- * History:
- * 11-Feb-04  C.Stylianou       NBL: Created.
- *
- */
 
 void
 initEpson13806(void)
 {
-    EPSON_DEBUG (fprintf(stderr,"+initEpson\n"));
+    EPSON_DEBUG ("%s\n", __func__);
 
     // Map Epson S1D13806 registers
     regbase = epsonMapDevice (EPSON13806_PHYSICAL_REG_ADDR, EPSON13806_GPIO_REGSIZE);
     if (!regbase)
         perror("ERROR: regbase\n");   // Sets up register mappings in header files.
-
 #if 0
     CARD8 rev_code;
     rev_code = EPSON13806_REG (EPSON13806_REVCODE);
     if ((rev_code >> 2) != 0x07)
         perror("ERROR: EPSON13806 Display Controller NOT FOUND!\n");
 #endif
-
-    EPSON_DEBUG (fprintf(stderr,"-initEpson\n"));
 }
 
-/**
- * exaDDXDriverInit is required by the top-level EXA module, and is used by
- * the xorg DDX to hook in its EnableDisableFB wrapper.  We don't need it, since
- * we won't be enabling/disabling the FB.
- */
 void
 exaDDXDriverInit(ScreenPtr pScreen)
 {
-    ExaScreenPriv(pScreen);
-
-    pExaScr->migration = ExaMigrationSmart;
-    pExaScr->checkDirtyCorrectness = TRUE;
 }

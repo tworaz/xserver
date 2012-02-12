@@ -30,13 +30,41 @@
 #ifdef HAVE_CONFIG_H
 #include <kdrive-config.h>
 #endif
-
 #include "epson13806.h"
+
+KdCardFuncs epsonFuncs = {
+    epsonCardInit,          /* cardinit */
+    epsonScreenInit,        /* scrinit */
+    epsonInitScreen,        /* initScreen */
+    epsonFinishInitScreen,
+    epsonCreateResources,
+    epsonPreserve,          /* preserve */
+    epsonEnable,            /* enable */
+    epsonDPMS,              /* dpms */
+    epsonDisable,           /* disable */
+    epsonRestore,           /* restore */
+    epsonScreenFini,        /* scrfini */
+    epsonCardFini,          /* cardfini */
+
+    0,                      /* initCursor */
+    0,                      /* enableCursor */
+    0,                      /* disableCursor */
+    0,                      /* finiCursor */
+    0,                      /* recolorCursor */
+
+    epsonDrawInit,          /* initAccel */
+    epsonDrawEnable,        /* enableAccel */
+    epsonDrawDisable,       /* disableAccel */
+    epsonDrawFini,          /* finiAccel */
+
+    epsonGetColors,         /* getColors */
+    epsonPutColors,         /* putColors */
+};
 
 void
 InitCard (char *name)
 {
-    fprintf(stderr, "Epson 13806 Tiny X Driver ver 1.01\n");
+    fprintf(stdout, "Epson 13806 Tiny X Driver ver 1.10\n");
 
     KdCardInfoAdd (&epsonFuncs, 0);
 }
@@ -57,11 +85,23 @@ InitInput (int argc, char **argv)
 void
 CloseInput (void)
 {
+    KdCloseInput ();
 }
 
 int
 ddxProcessArgument (int argc, char **argv, int i)
 {
+    if (!strcmp (argv[i], "-fb"))
+    {
+        if (i+1 < argc)
+        {
+            fbdevDevicePath = argv[i+1];
+            return 2;
+        }
+        UseMsg();
+        exit(1);
+    }
+
     return KdProcessArgument (argc, argv, i);
 }
 
@@ -69,4 +109,6 @@ void
 ddxUseMsg (void)
 {
     KdUseMsg();
+    ErrorF("\nXepson Device Usage:\n");
+    ErrorF("-fb path         Framebuffer device to use. Defaults to /dev/fb0\n");
 }

@@ -31,6 +31,9 @@
 #ifndef EPSON13806REG_H
 #define EPSON13806REG_H
 
+typedef volatile CARD8	VOL8;
+typedef volatile CARD16	VOL16;
+typedef volatile CARD32	VOL32;
 
 #define TT_UNUSED(x) ((void) (x))
 
